@@ -1,36 +1,46 @@
-import os
-import tempfile
 import streamlit as st
-from embedchain import App
+from llama_index.core import VectorStoreIndex, ServiceContext, Document
+from llama_index.llms.openai import OpenAI
+import openai
+from llama_index.core import SimpleDirectoryReader
+# from PyPDF2 import PdfReader
 
-def embedchain_bot(db_path, api_key):
-    return App.from_config(
-        config={
-            "llm": {"provider": "openai", "config": {"api_key": api_key}},
-            "vectordb": {"provider": "chroma", "config": {"dir": db_path}},
-            "embedder": {"provider": "openai", "config": {"api_key": api_key}},
-        }
-    )
+st.set_page_config(page_title="Chat with the Bain Report (M&A)", page_icon="🦙", layout="centered", initial_sidebar_state="auto", menu_items=None)
+openai.api_key = st.secrets.openai_key
+st.title("Bain Reports (M&A, PE & Tech)")
+         
+if "messages" not in st.session_state.keys(): # Initialize the chat messages history
+    st.session_state.messages = [
+        {"role": "assistant", "content": "Ask me a question about Bain Report!"}
+    ]
 
-st.title("Chat with Slack Doc")
+@st.cache_resource(show_spinner=False)
+def load_data():
+    with st.spinner(text="Loading and indexing the Bain Report docs – hang tight! This should take 1-2 minutes."):
+        reader = SimpleDirectoryReader(input_dir="./data", recursive=True)
+        docs = reader.load_data()
+        service_context = ServiceContext.from_defaults(llm=OpenAI(model="gpt-4", temperature=0.8, system_prompt="You are an expert on the Bain Reports. Please provide detailed insights from the Bain Reports on [specific topic or question]."))
+        index = VectorStoreIndex.from_documents(docs, service_context=service_context)
+        return index
 
-openai_access_token = st.text_input("API Key", type="password")
+index = load_data()
+# chat_engine = index.as_chat_engine(chat_mode="condense_question", verbose=True, system_prompt="You are an expert on the Bain Report and your job is to answer technical questions. Assume that all questions are related to the Bain Report. Keep your answers technical and based on facts – do not hallucinate features.")
 
-if openai_access_token:
-    db_path = tempfile.mkdtemp()
-    app = embedchain_bot(db_path, openai_access_token)
+if "chat_engine" not in st.session_state.keys(): # Initialize the chat engine
+        st.session_state.chat_engine = index.as_chat_engine(chat_mode="condense_question", verbose=True)
 
-    pdf_file = st.file_uploader("Upload a PDF file", type="pdf")
+if prompt := st.chat_input("Your question"): # Prompt for user input and save to chat history
+    st.session_state.messages.append({"role": "user", "content": prompt})
 
-    if pdf_file:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as f:
-            f.write(pdf_file.getvalue())
-            app.add(f.name, data_type="pdf_file")
-        os.remove(f.name)
-        st.success(f"Added {pdf_file.name} to knowledge base!")
+for message in st.session_state.messages: # Display the prior chat messages
+    with st.chat_message(message["role"]):
+        st.write(message["content"])
 
-    prompt = st.text_input("Ask a question")
-
-    if prompt:
-        answer = app.chat(prompt)
-        st.write(answer)
+# If last message is not from assistant, generate a new response
+if st.session_state.messages[-1]["role"] != "assistant":
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            response = st.session_state.chat_engine.chat(prompt)
+            st.write(response.response)
+            message = {"role": "assistant", "content": response.response}
+            st.session_state.messages.append(message) # Add response to message history
