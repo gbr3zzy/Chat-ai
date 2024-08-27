@@ -1,46 +1,134 @@
 import streamlit as st
-from llama_index.core import VectorStoreIndex, ServiceContext, Document
-from llama_index.llms.openai import OpenAI
-import openai
-from llama_index.core import SimpleDirectoryReader
-# from PyPDF2 import PdfReader
+import os
+from PyPDF2 import PdfReader
+import docx
+from langchain.chat_models import ChatOpenAI
+from langchain.llms import OpenAI
+from dotenv import load_dotenv
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.embeddings.huggingface import HuggingFaceEmbeddings
+from langchain.vectorstores import FAISS
+from langchain.chains import ConversationalRetrievalChain
+from langchain.memory import ConversationBufferMemory
+from streamlit_chat import message
+from langchain.callbacks import get_openai_callback
 
-st.set_page_config(page_title="Chat with the Bain Report (M&A)", page_icon="🦙", layout="centered", initial_sidebar_state="auto", menu_items=None)
-openai.api_key = st.secrets.openai_key
-st.title("Bain Reports (M&A, PE & Tech)")
-         
-if "messages" not in st.session_state.keys(): # Initialize the chat messages history
-    st.session_state.messages = [
-        {"role": "assistant", "content": "Ask me a question about Bain Report!"}
-    ]
 
-@st.cache_resource(show_spinner=False)
-def load_data():
-    with st.spinner(text="Loading and indexing the Bain Report docs – hang tight! This should take 1-2 minutes."):
-        reader = SimpleDirectoryReader(input_dir="./data", recursive=True)
-        docs = reader.load_data()
-        service_context = ServiceContext.from_defaults(llm=OpenAI(model="gpt-4", temperature=0.8, system_prompt="You are an expert on the Bain Reports. Please provide detailed insights from the Bain Reports on [specific topic or question]."))
-        index = VectorStoreIndex.from_documents(docs, service_context=service_context)
-        return index
 
-index = load_data()
-# chat_engine = index.as_chat_engine(chat_mode="condense_question", verbose=True, system_prompt="You are an expert on the Bain Report and your job is to answer technical questions. Assume that all questions are related to the Bain Report. Keep your answers technical and based on facts – do not hallucinate features.")
+def main():
+    load_dotenv()
+    st.set_page_config(page_title="Chat With files")
+    st.header("ChatPDF developed by [@Sabber_dev](https://x.com/sabber_dev)")
 
-if "chat_engine" not in st.session_state.keys(): # Initialize the chat engine
-        st.session_state.chat_engine = index.as_chat_engine(chat_mode="condense_question", verbose=True)
+    if "conversation" not in st.session_state:
+        st.session_state.conversation = None
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = None
+    if "processComplete" not in st.session_state:
+        st.session_state.processComplete = None
 
-if prompt := st.chat_input("Your question"): # Prompt for user input and save to chat history
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.sidebar:
+        uploaded_files =  st.file_uploader("Upload your file",type=['pdf','docx'],accept_multiple_files=True)
+        openai_api_key = st.text_input("OpenAI API Key", key="chatbot_api_key", type="password")
+        process = st.button("Process")
+    if process:
+        if not openai_api_key:
+            st.info("Please add your OpenAI API key to continue.")
+            st.stop()
+        files_text = get_files_text(uploaded_files)
+        text_chunks = get_text_chunks(files_text)
+        vetorestore = get_vectorstore(text_chunks)
+     
+        st.session_state.conversation = get_conversation_chain(vetorestore,openai_api_key) 
 
-for message in st.session_state.messages: # Display the prior chat messages
-    with st.chat_message(message["role"]):
-        st.write(message["content"])
+        st.session_state.processComplete = True
 
-# If last message is not from assistant, generate a new response
-if st.session_state.messages[-1]["role"] != "assistant":
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            response = st.session_state.chat_engine.chat(prompt)
-            st.write(response.response)
-            message = {"role": "assistant", "content": response.response}
-            st.session_state.messages.append(message) # Add response to message history
+    if  st.session_state.processComplete == True:
+        user_question = st.chat_input("Chat with your file")
+        if user_question:
+            handel_userinput(user_question)
+
+
+
+
+
+def get_files_text(uploaded_files):
+    text = ""
+    for uploaded_file in uploaded_files:
+        split_tup = os.path.splitext(uploaded_file.name)
+        file_extension = split_tup[1]
+        if file_extension == ".pdf":
+            text += get_pdf_text(uploaded_file)
+        elif file_extension == ".docx":
+            text += get_docx_text(uploaded_file)
+        else:
+            text += get_csv_text(uploaded_file)
+    return text
+
+
+def get_pdf_text(pdf):
+    pdf_reader = PdfReader(pdf)
+    text = ""
+    for page in pdf_reader.pages:
+        text += page.extract_text()
+    return text
+
+def get_docx_text(file):
+    doc = docx.Document(file)
+    allText = []
+    for docpara in doc.paragraphs:
+        allText.append(docpara.text)
+    text = ' '.join(allText)
+    return text
+
+def get_csv_text(file):
+    return "a"
+
+def get_text_chunks(text):
+    text_splitter = CharacterTextSplitter(
+        separator="\n",
+        chunk_size=900,
+        chunk_overlap=100,
+        length_function=len
+    )
+    chunks = text_splitter.split_text(text)
+    return chunks
+
+
+def get_vectorstore(text_chunks):
+    embeddings = HuggingFaceEmbeddings()
+    knowledge_base = FAISS.from_texts(text_chunks,embeddings)
+    return knowledge_base
+
+def get_conversation_chain(vetorestore,openai_api_key):
+    llm = ChatOpenAI(openai_api_key=openai_api_key, model_name = 'gpt-3.5-turbo',temperature=0)
+    memory = ConversationBufferMemory(memory_key='chat_history', return_messages=True)
+    conversation_chain = ConversationalRetrievalChain.from_llm(
+        llm=llm,
+        retriever=vetorestore.as_retriever(),
+        memory=memory
+    )
+    return conversation_chain
+
+# This function takes a user question as input, sends it to a conversation model and displays the conversation history along with some additional information.
+def handel_userinput(user_question):
+
+    with get_openai_callback() as cb:
+        response = st.session_state.conversation({'question':user_question})
+    st.session_state.chat_history = response['chat_history']
+
+    response_container = st.container()
+
+    with response_container:
+        for i, messages in enumerate(st.session_state.chat_history):
+            if i % 2 == 0:
+                message(messages.content, is_user=True, key=str(i))
+            else:
+                message(messages.content, key=str(i))
+        st.write(f"Total Tokens: {cb.total_tokens}" f", Prompt Tokens: {cb.prompt_tokens}" f", Completion Tokens: {cb.completion_tokens}" f", Total Cost (USD): ${cb.total_cost}")
+
+
+
+
+if __name__ == '__main__':
+    main()
