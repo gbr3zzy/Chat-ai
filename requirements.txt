@@ -1,2 +1,6 @@
 streamlit 
-llama_index
+PyPDF2 
+docx
+langchain
+dotenv 
+streamlit_chat 
