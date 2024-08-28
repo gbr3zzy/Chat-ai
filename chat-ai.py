@@ -53,29 +53,28 @@ def get_vector_store(text_chunks):
         st.warning("Issue with creating the vector store. There might be an issue with the extracted text or embeddings.")
         st.error(e)
 
-def get_response(context, question, model_engine="gpt-4"):
-    messages = [
-        {"role": "system", "content": "You are a helpful and informative assistant that answers questions using text from the reference context."},
-        {"role": "user", "content": f"Context: {context}\n\nQuestion: {question}"}
-    ]
+def get_response(context, question, client):
+    prompt = f"""
+    You are a helpful and informative assistant that answers questions using text from the reference context.
+    
+    Context: {context}\n
+    Question: {question}
+    """
 
     try:
-        response = openai.ChatCompletion.create(
-            model=model_engine,
-            messages=messages,
+        response = client.completions.create(
+            model="gpt-3.5-turbo-instruct",
+            prompt=prompt,
             max_tokens=8000,
-            temperature=0.2,
-            top_p=1.0,
-            frequency_penalty=0.0,
-            presence_penalty=0.0
+            temperature=0.2
         )
-        return response['choices'][0]['message']['content']
+        return response['choices'][0]['text']
 
     except Exception as e:
         st.warning("Error while generating the response from OpenAI.")
         st.error(e)
 
-def working_process():
+def working_process(client):
 
     vectorstore = st.session_state['vectorstore']
 
@@ -102,7 +101,7 @@ def working_process():
         with st.chat_message("AI"):
             try:
                 relevant_content = vectorstore.similarity_search(user_query, k=10)
-                result = get_response(relevant_content, user_query)
+                result = get_response(relevant_content, user_query, client)
                 st.markdown(result)
                 st.session_state.chat_history.append(AIMessage(content=result))
             except Exception as e:
@@ -113,10 +112,10 @@ def main():
 
     load_dotenv()
 
-    st.set_page_config(page_title="Chat with Multiple PDFs", page_icon=":books:")
-    st.header("Chat with Multiple PDFs :books:")
+    st.set_page_config(page_title="Incidents AI Chat", page_icon=":books:")
+    st.header("Chat with Incident AI")
 
-    openai.api_key = st.secrets["OPENAI_API_KEY"]
+    client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
     if "vectorstore" not in st.session_state:
         st.session_state.vectorstore = None
@@ -131,7 +130,7 @@ def main():
                 st.session_state.vectorstore = vectorstore
 
     if st.session_state.vectorstore is not None:        
-        working_process()
+        working_process(client)
 
 if __name__ == "__main__":
     main()
