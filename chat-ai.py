@@ -95,8 +95,8 @@ def main():
 
     load_dotenv()
 
-    st.set_page_config(page_title="Chat with Multiple PDFs", page_icon=":books:")
-    st.header("Chat with Multiple PDFs :books:")
+    st.set_page_config(page_title="Incident AI Demo", page_icon=":books:")
+    st.header("Chat with Incident AI:")
 
     openai.api_key = st.secrets["OPENAI_API_KEY"]
 
