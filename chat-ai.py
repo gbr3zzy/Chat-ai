@@ -78,7 +78,7 @@ def get_response(context, question, client):
             max_tokens=500,  # Reduced from 8000
             temperature=0.2
         )
-        return response['choices'][0]['text']
+        return response.choices[0].text  # Correct way to access the response text
 
     except Exception as e:
         st.warning("Error while generating the response from OpenAI.")
@@ -122,8 +122,8 @@ def main():
 
     load_dotenv()
 
-    st.set_page_config(page_title="Chat Incidents AI DEMO", page_icon=":books:")
-    st.header("Chat with Incidents AI")
+    st.set_page_config(page_title="Incidents AI", page_icon=":books:")
+    st.header("Incidents AI :books:")
 
     client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
