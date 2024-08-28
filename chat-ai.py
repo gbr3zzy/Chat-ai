@@ -123,7 +123,7 @@ def main():
     load_dotenv()
 
     st.set_page_config(page_title="Incidents AI PDF DEMO")
-    st.header("Incidents AI :robot:")
+    st.header("Incidents AI")
 
     client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
