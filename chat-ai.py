@@ -2,19 +2,30 @@ import os
 import streamlit as st
 import openai
 from PyPDF2 import PdfReader
+from pdf2image import convert_from_path
+import pytesseract
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores.faiss import FAISS
 from langchain.embeddings.openai import OpenAIEmbeddings
 
+def extract_text_from_image(image):
+    return pytesseract.image_to_string(image)
+
 def get_single_pdf_chunks(pdf, text_splitter):
     pdf_reader = PdfReader(pdf)
     pdf_chunks = []
+    
     for page in pdf_reader.pages:
         page_text = page.extract_text()
+        if not page_text.strip():  # If no text is found, use OCR
+            images = convert_from_path(pdf.name, first_page=pdf_reader.pages.index(page) + 1, last_page=pdf_reader.pages.index(page) + 1)
+            page_text = extract_text_from_image(images[0])
+        
         page_chunks = text_splitter.split_text(page_text)
         pdf_chunks.extend(page_chunks)
+    
     return pdf_chunks
 
 def get_all_pdfs_chunks(pdf_docs):
@@ -30,7 +41,7 @@ def get_all_pdfs_chunks(pdf_docs):
     return all_chunks
 
 def get_vector_store(text_chunks):
-    embeddings = OpenAIEmbeddings()  # Using OpenAI Embeddings instead of Google
+    embeddings = OpenAIEmbeddings()
     try:
         vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
         return vectorstore
@@ -95,8 +106,8 @@ def main():
 
     load_dotenv()
 
-    st.set_page_config(page_title="Incident AI Demo", page_icon=":books:")
-    st.header("Chat with Incident AI:")
+    st.set_page_config(page_title="Chat with Multiple PDFs", page_icon=":books:")
+    st.header("Chat with Multiple PDFs :books:")
 
     openai.api_key = st.secrets["OPENAI_API_KEY"]
 
