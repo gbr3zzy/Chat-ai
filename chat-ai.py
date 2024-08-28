@@ -9,6 +9,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores.faiss import FAISS
 from langchain.embeddings.openai import OpenAIEmbeddings
+import tiktoken  # Import for token handling
 
 def extract_text_from_image(image):
     return pytesseract.image_to_string(image)
@@ -61,11 +62,20 @@ def get_response(context, question, client):
     Question: {question}
     """
 
+    # Tokenize the prompt
+    encoding = tiktoken.encoding_for_model("gpt-3.5-turbo-instruct")
+    prompt_tokens = encoding.encode(prompt)
+    
+    # Truncate context if necessary
+    max_prompt_tokens = 3000  # Adjust this value as needed
+    if len(prompt_tokens) > max_prompt_tokens:
+        prompt = encoding.decode(prompt_tokens[:max_prompt_tokens])
+
     try:
         response = client.completions.create(
             model="gpt-3.5-turbo-instruct",
             prompt=prompt,
-            max_tokens=8000,
+            max_tokens=500,  # Reduced from 8000
             temperature=0.2
         )
         return response['choices'][0]['text']
@@ -112,8 +122,8 @@ def main():
 
     load_dotenv()
 
-    st.set_page_config(page_title="Incidents AI Chat", page_icon=":books:")
-    st.header("Chat with Incident AI")
+    st.set_page_config(page_title="Chat Incidents AI DEMO", page_icon=":books:")
+    st.header("Chat with Incidents AI")
 
     client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
