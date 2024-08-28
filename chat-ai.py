@@ -90,7 +90,7 @@ def working_process(client):
 
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = [
-        AIMessage(content="Hello! I'm a PDF Assistant. Ask me anything about your PDFs or Documents")
+        AIMessage(content="Hello! I'm Incidents AI. Ask me any Questions related to your incident")
     ]
     
     for message in st.session_state.chat_history:
