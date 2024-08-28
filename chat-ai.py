@@ -17,14 +17,18 @@ def get_single_pdf_chunks(pdf, text_splitter):
     pdf_reader = PdfReader(pdf)
     pdf_chunks = []
     
-    for page in pdf_reader.pages:
+    for page_num, page in enumerate(pdf_reader.pages):
         page_text = page.extract_text()
         if not page_text.strip():  # If no text is found, use OCR
-            images = convert_from_path(pdf.name, first_page=pdf_reader.pages.index(page) + 1, last_page=pdf_reader.pages.index(page) + 1)
+            images = convert_from_path(pdf.name, first_page=page_num + 1, last_page=page_num + 1)
             page_text = extract_text_from_image(images[0])
-        
-        page_chunks = text_splitter.split_text(page_text)
-        pdf_chunks.extend(page_chunks)
+            st.write(f"Applied OCR to page {page_num + 1}. Extracted text: {page_text[:500]}...")  # Log first 500 characters
+            
+        if not page_text.strip():
+            st.warning(f"No text extracted from page {page_num + 1}, even after applying OCR.")
+        else:
+            page_chunks = text_splitter.split_text(page_text)
+            pdf_chunks.extend(page_chunks)
     
     return pdf_chunks
 
@@ -46,7 +50,8 @@ def get_vector_store(text_chunks):
         vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
         return vectorstore
     except Exception as e:
-        st.warning("Issue with reading the PDF/s. Your File might be scanned so there will be nothing in chunks for embeddings to work on")
+        st.warning("Issue with creating the vector store. There might be an issue with the extracted text or embeddings.")
+        st.error(e)
 
 def get_response(context, question, model_engine="gpt-4"):
     messages = [
@@ -67,7 +72,8 @@ def get_response(context, question, model_engine="gpt-4"):
         return response['choices'][0]['message']['content']
 
     except Exception as e:
-        st.warning(e)
+        st.warning("Error while generating the response from OpenAI.")
+        st.error(e)
 
 def working_process():
 
@@ -100,7 +106,8 @@ def working_process():
                 st.markdown(result)
                 st.session_state.chat_history.append(AIMessage(content=result))
             except Exception as e:
-                st.warning(e)
+                st.warning("Error during the similarity search or response generation.")
+                st.error(e)
 
 def main():
 
