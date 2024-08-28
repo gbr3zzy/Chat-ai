@@ -6,4 +6,6 @@ langchain
 langchain-core
 langchain-community
 faiss-cpu
-langchain_google_genai
+pytesseract 
+pdf2image
+
